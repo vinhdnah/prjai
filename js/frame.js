@@ -360,7 +360,7 @@ function sortQuad(points) {
     return finalPoints;
 }
 
-// --- Chuyển đổi tọa độ từ khung hình camera (MediaPipe) sang kích thước thực tế của Canvas (theo tỉ lệ object-fit: cover) ---
+// --- Chuyển đổi tọa độ từ khung hình camera (MediaPipe) sang kích thước thực tế của Canvas (theo tỉ lệ object-fit: contain) ---
 function getCanvasCoords(lm) {
     let videoW = videoElement.videoWidth || 1280;
     let videoH = videoElement.videoHeight || 720;
@@ -370,13 +370,15 @@ function getCanvasCoords(lm) {
     
     let scale, dx = 0, dy = 0;
     if (canvasAspect > videoAspect) {
-        // Canvas bè ngang hơn Video (Video bị cắt trên dưới)
-        scale = width / videoW;
-        dy = (height - videoH * scale) / 2;
-    } else {
-        // Canvas cao dọc hơn Video (Video bị cắt trái phải - thường thấy trên Điện thoại)
+        // Canvas bè ngang hơn Video -> Trình hiển thị rộng hơn video -> Chừa khoảng trống bên trái/phải
+        // Video có chiều cao bằng chiều cao Canvas
         scale = height / videoH;
         dx = (width - videoW * scale) / 2;
+    } else {
+        // Canvas cao dọc hơn Video -> Trình hiển thị dọc hơn video -> Chừa khoảng trống bên trên/dưới
+        // Video có chiều rộng bằng chiều rộng Canvas
+        scale = width / videoW;
+        dy = (height - videoH * scale) / 2;
     }
     
     // Ánh xạ tọa độ normalized (0 đến 1) của MediaPipe sang điểm hiển thị thực tế
