@@ -2,6 +2,9 @@
 // CONFIGURATION SECTION - QUẢN LÝ THÔNG SỐ HIỆU ỨNG 💕
 // ======================================================================
 const CONFIG = {
+    // ImgBB API key để tải ảnh lên (Bạn cung cấp)
+    imgbbKey: 'fd742c3948f8cf8f60e57cb4229df53d',
+
     // Độ nhạy và độ mượt (Đặt = 1.0 để bám tay tức thì 1:1 không trễ, đặt < 1.0 để làm mượt chống rung)
     smoothFactor: 1.0, 
     
@@ -726,7 +729,7 @@ function initShareModal() {
         fileInput.click();
     });
     
-    // Xử lý upload ảnh (Hỗ trợ upload nhiều ảnh cùng lúc)
+    // Xử lý upload ảnh (Hỗ trợ upload nhiều ảnh cùng lúc qua ImgBB)
     fileInput.addEventListener('change', async (e) => {
         const files = Array.from(e.target.files);
         if (files.length === 0) return;
@@ -739,31 +742,31 @@ function initShareModal() {
             let uploadedCount = 0;
             const uploadPromises = files.map(async (file) => {
                 const formData = new FormData();
-                formData.append('file', file);
+                formData.append('image', file);
                 
-                // Tải lên Pixeldrain API - Hoạt động ổn định tại Việt Nam, không cần API Key, hỗ trợ CORS đầy đủ
-                const response = await fetch('https://pixeldrain.com/api/file', {
+                // Tải lên ImgBB API - Tốc độ cao, không bị chặn và có API Key riêng
+                const response = await fetch(`https://api.imgbb.com/1/upload?key=${CONFIG.imgbbKey}`, {
                     method: 'POST',
                     body: formData
                 });
                 
-                if (!response.ok) throw new Error("Không thể kết nối đến máy chủ lưu trữ ảnh.");
+                if (!response.ok) throw new Error("Không thể kết nối đến máy chủ ImgBB.");
                 
                 const resData = await response.json();
-                if (!resData.success || !resData.id) {
-                    throw new Error("Phản hồi tải ảnh thất bại từ máy chủ.");
+                if (!resData.success || !resData.data || !resData.data.url) {
+                    throw new Error("Phản hồi tải ảnh thất bại từ ImgBB.");
                 }
                 
                 uploadedCount++;
                 uploadStatus.textContent = `Đang tải lên ảnh (${uploadedCount}/${files.length})...`;
                 
-                // Trả về đường dẫn truy xuất trực tiếp ảnh raw từ Pixeldrain
-                return `https://pixeldrain.com/api/file/${resData.id}`;
+                // Trả về đường dẫn trực tiếp ảnh gốc của ImgBB
+                return resData.data.url;
             });
             
             // Chờ tất cả ảnh upload xong
             const urls = await Promise.all(uploadPromises);
-            console.log("Upload thành công tất cả ảnh:", urls);
+            console.log("Upload thành công tất cả ảnh lên ImgBB:", urls);
             
             // Ghép nối danh sách ảnh bằng dấu phẩy
             const combinedUrls = urls.join(',');
