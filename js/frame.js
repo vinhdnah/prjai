@@ -97,34 +97,42 @@ async function loadImagesAutomatically() {
     // 1. Kiểm tra xem người dùng có mở link chia sẻ chứa mã ảnh không
     const urlParams = new URLSearchParams(window.location.search);
     const shareCode = urlParams.get('code') || urlParams.get('img');
-    let sharedImgUrl = null;
+    let decodedString = null;
+    let sharedImgUrls = [];
+
     if (shareCode) {
         try {
-            sharedImgUrl = decodeSafeBase64(shareCode);
-            if (!sharedImgUrl.startsWith('http://') && !sharedImgUrl.startsWith('https://')) {
-                throw new Error("Mã URL không hợp lệ");
-            }
+            decodedString = decodeSafeBase64(shareCode);
+            // Cắt chuỗi giải mã bằng dấu phẩy để lấy danh sách các ảnh
+            const urls = decodedString.split(',');
+            sharedImgUrls = urls.filter(url => url.startsWith('http://') || url.startsWith('https://'));
         } catch (e) {
             if (shareCode.startsWith('http://') || shareCode.startsWith('https://')) {
-                sharedImgUrl = shareCode;
+                sharedImgUrls = [shareCode];
             }
         }
     }
 
-    if (sharedImgUrl) {
-        console.log("Đang tải ảnh được chia sẻ:", sharedImgUrl);
+    if (sharedImgUrls.length > 0) {
+        console.log("Đang tải các ảnh được chia sẻ:", sharedImgUrls);
         const infoEl = document.getElementById('info');
-        if (infoEl) infoEl.innerHTML = "💕 Nhận ảnh chia sẻ từ bạn bè! Ngón cái & trỏ để mở khung";
+        if (infoEl) {
+            infoEl.innerHTML = `💕 Nhận ${sharedImgUrls.length} ảnh từ bạn bè! Ngón cái & trỏ để mở khung`;
+        }
         
-        loadImage(sharedImgUrl, 
-            (loadedImg) => {
-                bgImages.unshift(loadedImg); // Đưa lên đầu danh sách hiển thị
-                currentImgIdx = 0;
-            },
-            (err) => {
-                console.error("Lỗi khi tải ảnh chia sẻ:", err);
-            }
-        );
+        // Để giữ đúng thứ tự ảnh khi chèn bằng unshift, ta nên unshift từ cuối mảng lên đầu
+        for (let i = sharedImgUrls.length - 1; i >= 0; i--) {
+            const path = sharedImgUrls[i];
+            loadImage(path, 
+                (loadedImg) => {
+                    bgImages.unshift(loadedImg); // Đưa lên đầu danh sách hiển thị
+                    currentImgIdx = 0;
+                },
+                (err) => {
+                    console.error("Lỗi khi tải ảnh chia sẻ:", path, err);
+                }
+            );
+        }
     }
 
     let imageList = [];
@@ -718,45 +726,58 @@ function initShareModal() {
         fileInput.click();
     });
     
-    // Xử lý upload ảnh
+    // Xử lý upload ảnh (Hỗ trợ upload nhiều ảnh cùng lúc)
     fileInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files);
+        if (files.length === 0) return;
         
         uploadInstruction.style.display = 'none';
         uploadStatus.style.display = 'block';
-        uploadStatus.textContent = "Đang nén và tải ảnh lên máy chủ...";
+        uploadStatus.textContent = `Đang nén và chuẩn bị tải lên ${files.length} ảnh...`;
         
         try {
-            const formData = new FormData();
-            formData.append('file', file);
-            
-            // Tải lên Telegra.ph (anonymous hosting)
-            const response = await fetch('https://telegra.ph/upload', {
-                method: 'POST',
-                body: formData
+            let uploadedCount = 0;
+            const uploadPromises = files.map(async (file) => {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                // Tải lên Pixeldrain API - Hoạt động ổn định tại Việt Nam, không cần API Key, hỗ trợ CORS đầy đủ
+                const response = await fetch('https://pixeldrain.com/api/file', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) throw new Error("Không thể kết nối đến máy chủ lưu trữ ảnh.");
+                
+                const resData = await response.json();
+                if (!resData.success || !resData.id) {
+                    throw new Error("Phản hồi tải ảnh thất bại từ máy chủ.");
+                }
+                
+                uploadedCount++;
+                uploadStatus.textContent = `Đang tải lên ảnh (${uploadedCount}/${files.length})...`;
+                
+                // Trả về đường dẫn truy xuất trực tiếp ảnh raw từ Pixeldrain
+                return `https://pixeldrain.com/api/file/${resData.id}`;
             });
             
-            if (!response.ok) throw new Error("Không thể kết nối đến máy chủ lưu trữ ảnh.");
+            // Chờ tất cả ảnh upload xong
+            const urls = await Promise.all(uploadPromises);
+            console.log("Upload thành công tất cả ảnh:", urls);
             
-            const resData = await response.json();
-            if (!Array.isArray(resData) || resData.length === 0 || !resData[0].src) {
-                throw new Error("Phản hồi từ máy chủ không hợp lệ.");
-            }
+            // Ghép nối danh sách ảnh bằng dấu phẩy
+            const combinedUrls = urls.join(',');
             
-            const uploadedImgUrl = 'https://telegra.ph' + resData[0].src;
-            console.log("Upload ảnh thành công:", uploadedImgUrl);
+            // Tạo mã ngắn gọn an toàn từ chuỗi các URL ảnh
+            const code = encodeSafeBase64(combinedUrls);
             
-            // Tạo mã ngắn gọn an toàn từ URL ảnh
-            const code = encodeSafeBase64(uploadedImgUrl);
-            
-            // Tạo đường dẫn hoàn chỉnh
+            // Tạo đường dẫn hoàn chỉnh chứa code
             const baseDomain = window.location.origin + window.location.pathname;
             const finalShareUrl = `${baseDomain}?code=${code}`;
             
             shareUrlText.textContent = finalShareUrl;
             resultBox.style.display = 'block';
-            uploadStatus.textContent = "Đã tạo link chia sẻ của bạn! 💕";
+            uploadStatus.textContent = `Đã tạo thành công link chia sẻ chứa ${urls.length} ảnh! 💕`;
         } catch (err) {
             console.error("Lỗi khi tạo link:", err);
             uploadStatus.textContent = "Tải ảnh lên thất bại. Vui lòng thử lại!";
