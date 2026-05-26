@@ -1,0 +1,6 @@
+# Ignore archive backups
+auto-reg-bot.rar
+
+# OS temporary files
+.DS_Store
+Thumbs.db

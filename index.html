@@ -1,0 +1,78 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="libs/p5/p5.min.js"></script>
+  <script src="libs/mediapipe/camera_utils.js"></script>
+  <script src="libs/mediapipe/hands.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="css/frame.css">
+
+  <title>VINHDNAH - Hand Control | Game AI VibeWP</title>
+  <meta name="description"
+    content="Tạo khung ảnh tình yêu bằng 2 bàn tay — ngón cái & ngón trỏ tạo khung, hiệu ứng trái tim.">
+  <meta name="keywords" content="game ai, frame, hand tracking, mediapipe, vibewp, VINHDNAH - Hand Control">
+  <meta name="author" content="VibeWP">
+  <meta name="robots" content="follow, index, max-snippet:-1, max-video-preview:-1, max-image-preview:large" />
+  <link rel="canonical" href="https://vibewp.vn/game/frame.html">
+  <link rel="icon" type="image/png" href="https://vibewp.vn/wp-content/uploads/2026/04/favicon.png">
+  <link rel="apple-touch-icon" href="https://vibewp.vn/wp-content/uploads/2026/04/favicon.png">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="VINHDNAH - Hand Control | Game AI VibeWP">
+  <meta property="og:description"
+    content="Tạo khung ảnh tình yêu bằng 2 bàn tay — ngón cái & ngón trỏ tạo khung, hiệu ứng trái tim.">
+  <meta property="og:url" content="https://vibewp.vn/game/frame.html">
+  <meta property="og:site_name" content="VibeWP">
+  <meta property="og:image" content="https://vibewp.vn/game/images/logo.png">
+  <meta property="og:locale" content="vi_VN">
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="VINHDNAH - Hand Control | Game AI VibeWP">
+  <meta name="twitter:description"
+    content="Tạo khung ảnh tình yêu bằng 2 bàn tay — ngón cái & ngón trỏ tạo khung, hiệu ứng trái tim.">
+  <meta name="twitter:image" content="https://vibewp.vn/game/images/logo.png">
+
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Game",
+      "name": "VINHDNAH - Hand Control",
+      "description": "Tạo khung ảnh tình yêu bằng 2 bàn tay — ngón cái & ngón trỏ tạo khung, hiệu ứng trái tim.",
+      "url": "https://vibewp.vn/game/frame.html",
+      "image": "https://vibewp.vn/game/images/logo.png",
+      "author": {
+        "@type": "Organization",
+        "name": "VibeWP"
+      }
+    }
+    </script>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-G8CRTCYGJY"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() { dataLayer.push(arguments); }
+    gtag('js', new Date());
+
+    gtag('config', 'G-G8CRTCYGJY');
+  </script>
+</head>
+
+<body>
+  <video class="layer input_video" autoplay playsinline></video>
+  <div id="canvas-wrapper"></div>
+  <div id="ui">
+    <h1>VINHDNAH 💕 <span class="loader" id="loader"></span></h1>
+    <select id="camera-select"></select>
+  </div>
+  <div id="info">💕 Giơ 2 bàn tay — ngón cái & ngón trỏ tạo khung ảnh tình yêu</div>
+
+  <script src="js/frame.js"></script>
+</body>
+
+</html>

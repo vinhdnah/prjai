@@ -1,0 +1,617 @@
+// ======================================================================
+// CONFIGURATION SECTION - QUẢN LÝ THÔNG SỐ HIỆU ỨNG 💕
+// ======================================================================
+const CONFIG = {
+    // Độ nhạy và độ mượt của việc nhận diện (lớn hơn = nhạy bén hơn, nhỏ hơn = mượt hơn)
+    smoothFactor: 0.35, 
+    
+    // Khoảng cách nhận diện khung
+    minFrameDiag: 80,    // Khoảng cách tối thiểu để hiển thị khung ảnh
+    closeThreshold: 100,  // Khoảng cách khi khép tay để chuẩn bị chuyển ảnh
+    openThreshold: 160,   // Khoảng cách khi mở tay rộng ra để chuyển ảnh
+    
+    // Số lượng hạt tối đa để đảm bảo hiệu năng
+    maxSparks: 80,
+    maxHearts: 25,
+    maxGlitters: 40,
+    
+    // Danh sách ảnh dự phòng (fallback) nếu trình duyệt không quét được thư mục tự động
+    fallbackImages: [
+        'images/anh1.jpg',
+        'images/anh2.jpg',
+        'images/anh3.jpg'
+    ]
+};
+
+let videoElement, hands, handResults = null, isModelLoaded = false;
+let activeStream = null, lastVideoTime = -1;
+let bgImages = [];
+let currentImgIdx = 0;
+let wasClosed = false; 
+let prevImgIdx = -1;
+let transitionProgress = 1.0;
+
+// Biến lưu tọa độ khung đã được làm mượt
+let smoothCorners = null;
+
+// Không định nghĩa preload() để p5.js khởi chạy ngay lập tức mà không bị block màn hình tải ảnh.
+function preload() {
+    // Để trống
+}
+
+let sparks = [];
+let hearts = [];
+let glitters = [];
+let prevDist = 0;
+let isOpen = false;
+let openAlpha = 0;
+let cornerPulse = 0;
+const ALL_TIPS = [4, 8, 12, 16, 20];
+const TIP_COLORS = ['#ff3366', '#ffaa00', '#00ff88', '#00aaff', '#cc66ff'];
+const HEART_VERTS = [];
+
+for (let a = 0; a < Math.PI * 2; a += 0.25) {
+    HEART_VERTS.push({
+        hx: 16 * Math.pow(Math.sin(a), 3),
+        hy: -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a))
+    });
+}
+
+function setup() {
+    let canvas = createCanvas(1280, 720);
+    canvas.parent('canvas-wrapper');
+    textAlign(CENTER, CENTER);
+    textFont('Courier New');
+    imageMode(CENTER); // Thiết lập vẽ ảnh từ tâm
+    
+    videoElement = document.querySelector('.input_video');
+    
+    // Cấu hình MediaPipe Hands với độ nhạy tối ưu hơn
+    hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+    hands.setOptions({ 
+        maxNumHands: 2, 
+        modelComplexity: 1, 
+        minDetectionConfidence: 0.5, // Giảm xuống 0.5 giúp nhận diện ngón tay nhạy hơn
+        minTrackingConfidence: 0.55  // Giữ tracking ở 0.55 để tránh mất dấu khi di chuyển nhanh
+    });
+    
+    hands.onResults((results) => {
+        if (!isModelLoaded) {
+            isModelLoaded = true;
+            document.getElementById('loader').style.display = 'none';
+        }
+        handResults = results;
+    });
+    
+    getCameras();
+    
+    // Tự động quét và tải ảnh trong thư mục images
+    loadImagesAutomatically();
+}
+
+// --- Hàm tự động quét và tải ảnh từ thư mục images ---
+async function loadImagesAutomatically() {
+    let imageList = [];
+    try {
+        // http-server có tính năng Directory Listing (hiển thị danh sách file dưới dạng HTML)
+        const response = await fetch('images/');
+        if (response.ok) {
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const links = Array.from(doc.querySelectorAll('a'));
+            
+            const imageExtensions = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+            const foundFiles = links
+                .map(link => link.getAttribute('href'))
+                .filter(href => href && imageExtensions.some(ext => href.toLowerCase().endsWith(ext)))
+                .map(href => 'images/' + href.split('/').pop());
+            
+            // Lọc các ảnh trùng lặp
+            imageList = [...new Set(foundFiles)];
+        }
+    } catch (e) {
+        console.warn("Không thể quét thư mục tự động (lỗi CORS hoặc hosting không hỗ trợ), dùng danh sách dự phòng.");
+    }
+    
+    // Nếu không quét được ảnh nào, dùng danh sách dự phòng
+    if (imageList.length === 0) {
+        imageList = CONFIG.fallbackImages;
+    }
+    
+    console.log("Danh sách ảnh tải vào game:", imageList);
+    
+    // Tải bất đồng bộ các ảnh
+    for (let path of imageList) {
+        loadImage(path, 
+            (loadedImg) => {
+                bgImages.push(loadedImg);
+            },
+            (err) => {
+                console.error("Không thể tải ảnh: " + path);
+            }
+        );
+    }
+}
+
+async function getCameras() {
+    try {
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const vids = devices.filter(d => d.kind === 'videoinput');
+        const sel = document.getElementById('camera-select');
+        vids.forEach((d, i) => { 
+            let o = document.createElement('option'); 
+            o.value = d.deviceId; 
+            o.text = d.label || `Camera ${i + 1}`; 
+            sel.appendChild(o); 
+        });
+        if (vids.length > 0) { 
+            sel.style.display = 'block'; 
+            sel.onchange = () => startCamera(sel.value); 
+            startCamera(sel.value); 
+        }
+    } catch (e) { 
+        console.error(e); 
+    }
+}
+
+async function startCamera(deviceId) {
+    if (activeStream) activeStream.getTracks().forEach(t => t.stop());
+    activeStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+            width: { ideal: 1280 }, 
+            height: { ideal: 720 }, 
+            deviceId: deviceId ? { exact: deviceId } : undefined 
+        } 
+    });
+    videoElement.srcObject = activeStream;
+    videoElement.onloadedmetadata = () => { 
+        videoElement.play(); 
+        processFrame(); 
+    };
+}
+
+let isProcessing = false;
+async function processFrame() {
+    if (isProcessing) {
+        requestAnimationFrame(processFrame);
+        return;
+    }
+    if (!videoElement.paused && !videoElement.ended && videoElement.currentTime !== lastVideoTime) {
+        lastVideoTime = videoElement.currentTime;
+        isProcessing = true;
+        hands.send({ image: videoElement }).then(() => {
+            isProcessing = false;
+        }).catch((err) => {
+            isProcessing = false;
+        });
+    }
+    requestAnimationFrame(processFrame);
+}
+
+function spawnSparks(x, y, count, col, strong) {
+    if (sparks.length >= CONFIG.maxSparks) return;
+    let speed = strong ? 6 : 3;
+    let sz = strong ? 5 : 3;
+    for (let i = 0; i < count; i++) {
+        sparks.push({
+            x, y,
+            vx: random(-speed, speed),
+            vy: random(-speed - 1, speed * 0.3),
+            life: random(strong ? 20 : 10, strong ? 40 : 25),
+            maxLife: strong ? 40 : 25,
+            size: random(2, sz),
+            col: col
+        });
+    }
+}
+
+function spawnHearts(corners, count) {
+    if (hearts.length >= CONFIG.maxHearts) return;
+    for (let i = 0; i < count; i++) {
+        let t1 = random(), t2 = random();
+        let top = { x: lerp(corners[0].x, corners[1].x, t1), y: lerp(corners[0].y, corners[1].y, t1) };
+        let bot = { x: lerp(corners[3].x, corners[2].x, t1), y: lerp(corners[3].y, corners[2].y, t1) };
+        hearts.push({
+            x: lerp(top.x, bot.x, t2),
+            y: lerp(top.y, bot.y, t2),
+            vy: random(-1.2, -0.3),
+            vx: random(-0.3, 0.3),
+            life: random(50, 90),
+            maxLife: 90,
+            size: random(10, 20)
+        });
+    }
+}
+
+function spawnGlitters(corners, count) {
+    if (glitters.length >= CONFIG.maxGlitters) return;
+    for (let i = 0; i < count; i++) {
+        let t1 = random(), t2 = random();
+        let top = { x: lerp(corners[0].x, corners[1].x, t1), y: lerp(corners[0].y, corners[1].y, t1) };
+        let bot = { x: lerp(corners[3].x, corners[2].x, t1), y: lerp(corners[3].y, corners[2].y, t1) };
+        glitters.push({
+            x: lerp(top.x, bot.x, t2), y: lerp(top.y, bot.y, t2),
+            life: random(25, 50), maxLife: 50,
+            size: random(1.5, 3),
+            twinkle: random(0.05, 0.12)
+        });
+    }
+}
+
+function drawHeart(x, y, sz) {
+    let r = sz * 0.05;
+    beginShape();
+    for (let v of HEART_VERTS) {
+        vertex(x + v.hx * r, y + v.hy * r);
+    }
+    endShape(CLOSE);
+}
+
+// --- Sắp xếp 4 điểm thành đa giác không tự cắt (TL, TR, BR, BL) ---
+function sortQuad(points) {
+    let cx = (points[0].x + points[1].x + points[2].x + points[3].x) / 4;
+    let cy = (points[0].y + points[1].y + points[2].y + points[3].y) / 4;
+
+    // Sắp xếp các điểm theo góc cực xoay quanh tâm (centroid)
+    let sorted = points.slice().sort((a, b) => {
+        return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
+    });
+
+    // Tìm điểm gần góc trên bên trái nhất (x+y nhỏ nhất) để bắt đầu
+    let minSum = Infinity, startIdx = 0;
+    for (let i = 0; i < 4; i++) {
+        let sum = sorted[i].x + sorted[i].y;
+        if (sum < minSum) {
+            minSum = sum;
+            startIdx = i;
+        }
+    }
+
+    // Sắp xếp lại theo thứ tự kim đồng hồ bắt đầu từ Top-Left (TL, TR, BR, BL)
+    let finalPoints = [];
+    for (let i = 0; i < 4; i++) {
+        finalPoints.push(sorted[(startIdx + i) % 4]);
+    }
+    return finalPoints;
+}
+
+function draw() {
+    clear();
+    cornerPulse = (sin(frameCount * 0.08) + 1) * 0.5;
+    let rawCorners = null;
+    
+    if (handResults && handResults.multiHandLandmarks) {
+        drawingContext.shadowBlur = 15;
+        
+        // Vẽ hiệu ứng trên đầu 5 ngón tay
+        for (let hi = 0; hi < handResults.multiHandLandmarks.length; hi++) {
+            let lm = handResults.multiHandLandmarks[hi];
+            for (let ti = 0; ti < ALL_TIPS.length; ti++) {
+                let tip = lm[ALL_TIPS[ti]];
+                let fx = tip.x * width;
+                let fy = tip.y * height;
+                let col = TIP_COLORS[ti];
+                drawingContext.shadowColor = col;
+                fill(col);
+                noStroke();
+                drawHeart(fx, fy, 12);
+                if (frameCount % 4 === 0) {
+                    spawnSparks(fx, fy, 1, col, true);
+                }
+            }
+        }
+        drawingContext.shadowBlur = 0;
+        
+        // Khi phát hiện đủ 2 bàn tay để tạo khung
+        if (handResults.multiHandLandmarks.length >= 2) {
+            let h1 = handResults.multiHandLandmarks[0];
+            let h2 = handResults.multiHandLandmarks[1];
+            
+            // Lấy 4 điểm chốt (Ngón cái-4 và Ngón trỏ-8 của cả 2 tay)
+            let pts = [
+                { x: h1[4].x * width, y: h1[4].y * height },
+                { x: h1[8].x * width, y: h1[8].y * height },
+                { x: h2[4].x * width, y: h2[4].y * height },
+                { x: h2[8].x * width, y: h2[8].y * height },
+            ];
+            
+            // Sắp xếp chuẩn các góc theo chiều kim đồng hồ
+            rawCorners = sortQuad(pts);
+        }
+    }
+    
+    // --- Áp dụng làm mượt góc khung ảnh (Exponential Smoothing) ---
+    if (rawCorners) {
+        if (!smoothCorners) {
+            smoothCorners = rawCorners.map(p => ({ x: p.x, y: p.y }));
+        } else {
+            let f = CONFIG.smoothFactor;
+            for (let i = 0; i < 4; i++) {
+                smoothCorners[i].x = smoothCorners[i].x * (1 - f) + rawCorners[i].x * f;
+                smoothCorners[i].y = smoothCorners[i].y * (1 - f) + rawCorners[i].y * f;
+            }
+        }
+    } else {
+        smoothCorners = null;
+    }
+    
+    // --- Vẽ Khung Ảnh và Các Hiệu Ứng ---
+    if (smoothCorners) {
+        let tl = smoothCorners[0], tr = smoothCorners[1], br = smoothCorners[2], bl = smoothCorners[3];
+        let diag = dist(tl.x, tl.y, br.x, br.y);
+        
+        let nowOpen = diag > CONFIG.minFrameDiag;
+        if (nowOpen && wasClosed && bgImages.length > 0) {
+            prevImgIdx = currentImgIdx;
+            currentImgIdx = (currentImgIdx + 1) % bgImages.length;
+            transitionProgress = 0.0;
+            wasClosed = false;
+        }
+        if (!nowOpen) wasClosed = true;
+        isOpen = nowOpen;
+        
+        // Tăng tiến trình chuyển cảnh
+        if (transitionProgress < 1.0) {
+            transitionProgress += 0.06; // Khoảng 16 khung hình
+            if (transitionProgress > 1.0) transitionProgress = 1.0;
+        }
+        
+        openAlpha = isOpen ? min(255, openAlpha + 10) : max(0, openAlpha - 12);
+        
+        if (isOpen && diag > prevDist + 2) {
+            for (let c of smoothCorners) {
+                spawnSparks(c.x, c.y, 4, random(['#ff3366', '#ff6699', '#ffaa00', '#ff4488']), true);
+            }
+        }
+        if (isOpen && frameCount % 5 === 0) spawnHearts(smoothCorners, 2);
+        if (isOpen && frameCount % 3 === 0) spawnGlitters(smoothCorners, 4);
+        
+        prevDist = diag;
+        
+        // Vẽ hiệu ứng vòng tròn và trái tim pulsing tại 4 góc đã được làm mượt
+        for (let i = 0; i < 4; i++) {
+            let p = smoothCorners[i];
+            let tipCol = ['#ff3366', '#ff3366', '#ffaa00', '#ffaa00'][i];
+            
+            noFill();
+            stroke(tipCol);
+            strokeWeight(2);
+            drawingContext.shadowBlur = 15;
+            drawingContext.shadowColor = tipCol;
+            drawingContext.globalAlpha = (0.3 + cornerPulse * 0.5) * (openAlpha / 255);
+            ellipse(p.x, p.y, 38 + cornerPulse * 14);
+            drawingContext.globalAlpha = 1;
+            drawingContext.shadowBlur = 0;
+            
+            push();
+            translate(p.x, p.y);
+            drawingContext.shadowBlur = 30;
+            drawingContext.shadowColor = tipCol;
+            drawingContext.globalAlpha = openAlpha / 255;
+            fill(tipCol);
+            noStroke();
+            drawHeart(0, 0, 18 + cornerPulse * 4);
+            drawingContext.globalAlpha = 1;
+            drawingContext.shadowBlur = 0;
+            pop();
+            
+            if (frameCount % 2 === 0 && isOpen) {
+                spawnSparks(p.x, p.y, 3, tipCol, true);
+            }
+        }
+        
+        // --- Hiển thị ảnh cắt bên trong khung ---
+        if (openAlpha > 10) {
+            let a = openAlpha;
+            
+            // Vẽ ảnh bên trong khung sử dụng clip
+            let drawClippedImage = (img, alphaVal) => {
+                if (!img) return;
+                push();
+                drawingContext.save();
+                drawingContext.beginPath();
+                drawingContext.moveTo(tl.x, tl.y);
+                drawingContext.lineTo(tr.x, tr.y);
+                drawingContext.lineTo(br.x, br.y);
+                drawingContext.lineTo(bl.x, bl.y);
+                drawingContext.closePath();
+                drawingContext.clip();
+                
+                let minX = Math.min(tl.x, tr.x, br.x, bl.x);
+                let maxX = Math.max(tl.x, tr.x, br.x, bl.x);
+                let minY = Math.min(tl.y, tr.y, br.y, bl.y);
+                let maxY = Math.max(tl.y, tr.y, br.y, bl.y);
+                let bw = maxX - minX;
+                let bh = maxY - minY;
+                let cx = (minX + maxX) / 2;
+                let cy = (minY + maxY) / 2;
+                
+                // Hiệu ứng zoom nhẹ thở (breathing) tạo cảm giác ảnh sống động
+                let breathe = 1.0 + sin(frameCount * 0.02) * 0.04;
+                
+                let imgAspect = img.width / img.height;
+                let boxAspect = bw / bh;
+                let dw, dh;
+                if (boxAspect > imgAspect) { 
+                    dw = bw * breathe; 
+                    dh = (bw / imgAspect) * breathe; 
+                } else { 
+                    dh = bh * breathe; 
+                    dw = (bh * imgAspect) * breathe; 
+                }
+                
+                drawingContext.globalAlpha = alphaVal / 255;
+                image(img, cx, cy, dw, dh);
+                drawingContext.globalAlpha = 1;
+                drawingContext.restore();
+                pop();
+            };
+
+            // Thực hiện hiệu ứng Cross-Fade chuyển tiếp mượt mà
+            if (prevImgIdx !== -1 && transitionProgress < 1.0) {
+                let oldImg = bgImages[prevImgIdx];
+                let newImg = bgImages[currentImgIdx];
+                
+                // Vẽ ảnh cũ mờ dần
+                if (oldImg) drawClippedImage(oldImg, a * (1 - transitionProgress));
+                // Vẽ ảnh mới rõ dần
+                if (newImg) drawClippedImage(newImg, a * transitionProgress);
+            } else {
+                let curImg = bgImages[currentImgIdx];
+                if (curImg) drawClippedImage(curImg, a);
+            }
+            
+            // Hiệu ứng Vignette hồng dịu nhẹ bên trong khung
+            if (bgImages[currentImgIdx]) {
+                push();
+                drawingContext.save();
+                drawingContext.beginPath();
+                drawingContext.moveTo(tl.x, tl.y);
+                drawingContext.lineTo(tr.x, tr.y);
+                drawingContext.lineTo(br.x, br.y);
+                drawingContext.lineTo(bl.x, bl.y);
+                drawingContext.closePath();
+                drawingContext.clip();
+                
+                let cx2 = (tl.x + br.x) / 2;
+                let cy2 = (tl.y + br.y) / 2;
+                let rad = dist(tl.x, tl.y, br.x, br.y) / 2;
+                let grad = drawingContext.createRadialGradient(cx2, cy2, rad * 0.3, cx2, cy2, rad);
+                grad.addColorStop(0, 'rgba(255,105,180,0)');
+                grad.addColorStop(1, `rgba(255,20,80,${0.15 * a / 255})`);
+                drawingContext.fillStyle = grad;
+                drawingContext.fillRect(tl.x - 50, tl.y - 50, dist(tl.x, 0, tr.x, 0) + 100, dist(0, tl.y, 0, bl.y) + 100);
+                drawingContext.restore();
+                pop();
+            }
+            
+            // Vẽ viền lớn dạng Gradient đổi màu chạy dọc theo khung
+            drawingContext.shadowBlur = 20 + cornerPulse * 15;
+            drawingContext.shadowColor = `rgba(255,105,180,${a / 255})`;
+            let borderGrad = drawingContext.createLinearGradient(tl.x, tl.y, br.x, br.y);
+            borderGrad.addColorStop(0, '#ff69b4');
+            borderGrad.addColorStop(0.5, '#ffaa00');
+            borderGrad.addColorStop(1, '#ff3366');
+            drawingContext.strokeStyle = borderGrad;
+            drawingContext.lineWidth = 4;
+            drawingContext.beginPath();
+            drawingContext.moveTo(tl.x, tl.y);
+            drawingContext.lineTo(tr.x, tr.y);
+            drawingContext.lineTo(br.x, br.y);
+            drawingContext.lineTo(bl.x, bl.y);
+            drawingContext.closePath();
+            drawingContext.stroke();
+            
+            // Viền chỉ trang trí mỏng màu trắng nhẹ bên trong
+            stroke(255, 255, 255, a * 0.4);
+            strokeWeight(1);
+            drawingContext.shadowBlur = 5;
+            drawingContext.shadowColor = 'rgba(255,255,255,0.3)';
+            let cx3 = (tl.x + br.x) / 2;
+            let cy3 = (tl.y + br.y) / 2;
+            beginShape();
+            for (let c of smoothCorners) {
+                vertex(c.x + (cx3 - c.x) * 0.06, c.y + (cy3 - c.y) * 0.06);
+            }
+            endShape(CLOSE);
+            drawingContext.shadowBlur = 0;
+            
+            // Vẽ các góc nối màu trắng nổi bật
+            for (let i = 0; i < 4; i++) {
+                let c = smoothCorners[i];
+                let next = smoothCorners[(i + 1) % 4];
+                let prev = smoothCorners[(i + 3) % 4];
+                let bLen = 25 + cornerPulse * 8;
+                
+                let dx1 = next.x - c.x, dy1 = next.y - c.y;
+                let len1 = Math.hypot(dx1, dy1) || 1;
+                dx1 /= len1; dy1 /= len1;
+                
+                let dx2 = prev.x - c.x, dy2 = prev.y - c.y;
+                let len2 = Math.hypot(dx2, dy2) || 1;
+                dx2 /= len2; dy2 /= len2;
+                
+                stroke(255, 255, 255, a * 0.9);
+                strokeWeight(2.5);
+                line(c.x, c.y, c.x + dx1 * bLen, c.y + dy1 * bLen);
+                line(c.x, c.y, c.x + dx2 * bLen, c.y + dy2 * bLen);
+                
+                noStroke();
+                drawingContext.shadowBlur = 12 + cornerPulse * 10;
+                drawingContext.shadowColor = '#ff69b4';
+                fill(255, 105, 180, 200 + cornerPulse * 55);
+                ellipse(c.x, c.y, 7 + cornerPulse * 4);
+                drawingContext.shadowBlur = 0;
+            }
+            
+            // Nhãn tọa độ 4 góc (TL, TR, BR, BL)
+            let labels = ['TL', 'TR', 'BR', 'BL'];
+            let offsets = [[-12, -22], [12, -22], [12, 22], [-12, 22]];
+            for (let i = 0; i < 4; i++) {
+                let c = smoothCorners[i];
+                push();
+                translate(c.x + offsets[i][0], c.y + offsets[i][1]);
+                scale(-1, 1);
+                drawingContext.globalAlpha = 0.45;
+                let lbl = `${labels[i]}(${Math.round(c.x)},${Math.round(c.y)})`;
+                noStroke(); 
+                fill(255, 255, 255); 
+                textSize(9); 
+                text(lbl, 0, 0);
+                drawingContext.globalAlpha = 1;
+                pop();
+            }
+        }
+    }
+    
+    // --- Cập nhật & Vẽ các hệ thống hạt ---
+    noStroke();
+    for (let i = sparks.length - 1; i >= 0; i--) {
+        let s = sparks[i];
+        s.x += s.vx; 
+        s.y += s.vy; 
+        s.vy += 0.15; 
+        s.life--;
+        let t = s.life / s.maxLife;
+        drawingContext.globalAlpha = t;
+        fill(s.col);
+        ellipse(s.x, s.y, s.size * t);
+        if (s.life <= 0) sparks.splice(i, 1);
+    }
+    drawingContext.globalAlpha = 1;
+    
+    textAlign(CENTER, CENTER);
+    for (let i = hearts.length - 1; i >= 0; i--) {
+        let h = hearts[i];
+        h.x += h.vx; 
+        h.y += h.vy; 
+        h.life--;
+        let t = h.life / h.maxLife;
+        drawingContext.globalAlpha = t * 0.7;
+        textSize(h.size);
+        text('💕', h.x, h.y);
+        if (h.life <= 0) hearts.splice(i, 1);
+    }
+    drawingContext.globalAlpha = 1;
+    
+    noStroke();
+    fill(255, 220, 240);
+    for (let i = glitters.length - 1; i >= 0; i--) {
+        let g = glitters[i];
+        g.life--;
+        let t = g.life / g.maxLife;
+        let twinkle = sin(frameCount * g.twinkle * 10 + i * 3);
+        let alpha = t * (0.5 + twinkle * 0.5);
+        if (alpha > 0.05) {
+            drawingContext.globalAlpha = alpha;
+            let sz = g.size * (0.8 + twinkle * 0.4);
+            rectMode(CENTER);
+            rect(g.x, g.y, sz * 2.5, sz * 0.5, 1);
+            rect(g.x, g.y, sz * 0.5, sz * 2.5, 1);
+        }
+        if (g.life <= 0) glitters.splice(i, 1);
+    }
+    drawingContext.globalAlpha = 1;
+}
