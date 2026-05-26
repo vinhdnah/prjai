@@ -87,10 +87,46 @@ function setup() {
     
     // Tự động quét và tải ảnh trong thư mục images
     loadImagesAutomatically();
+    
+    // Khởi tạo tính năng chia sẻ ảnh
+    initShareModal();
 }
 
 // --- Hàm tự động quét và tải ảnh từ thư mục images ---
 async function loadImagesAutomatically() {
+    // 1. Kiểm tra xem người dùng có mở link chia sẻ chứa mã ảnh không
+    const urlParams = new URLSearchParams(window.location.search);
+    const shareCode = urlParams.get('code') || urlParams.get('img');
+    let sharedImgUrl = null;
+    if (shareCode) {
+        try {
+            sharedImgUrl = decodeSafeBase64(shareCode);
+            if (!sharedImgUrl.startsWith('http://') && !sharedImgUrl.startsWith('https://')) {
+                throw new Error("Mã URL không hợp lệ");
+            }
+        } catch (e) {
+            if (shareCode.startsWith('http://') || shareCode.startsWith('https://')) {
+                sharedImgUrl = shareCode;
+            }
+        }
+    }
+
+    if (sharedImgUrl) {
+        console.log("Đang tải ảnh được chia sẻ:", sharedImgUrl);
+        const infoEl = document.getElementById('info');
+        if (infoEl) infoEl.innerHTML = "💕 Nhận ảnh chia sẻ từ bạn bè! Ngón cái & trỏ để mở khung";
+        
+        loadImage(sharedImgUrl, 
+            (loadedImg) => {
+                bgImages.unshift(loadedImg); // Đưa lên đầu danh sách hiển thị
+                currentImgIdx = 0;
+            },
+            (err) => {
+                console.error("Lỗi khi tải ảnh chia sẻ:", err);
+            }
+        );
+    }
+
     let imageList = [];
     try {
         // http-server có tính năng Directory Listing (hiển thị danh sách file dưới dạng HTML)
@@ -123,6 +159,8 @@ async function loadImagesAutomatically() {
     
     // Tải bất đồng bộ các ảnh
     for (let path of imageList) {
+        if (sharedImgUrl && path === sharedImgUrl) continue;
+        
         loadImage(path, 
             (loadedImg) => {
                 bgImages.push(loadedImg);
@@ -614,4 +652,128 @@ function draw() {
         if (g.life <= 0) glitters.splice(i, 1);
     }
     drawingContext.globalAlpha = 1;
+}
+
+// ======================================================================
+// SHARE LOGIC & HELPER FUNCTIONS 📤
+// ======================================================================
+
+// Mã hóa URL-safe Base64
+function encodeSafeBase64(str) {
+    return btoa(str)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+
+// Giải mã URL-safe Base64
+function decodeSafeBase64(base64) {
+    let str = base64.replace(/-/g, '+').replace(/_/g, '/');
+    while (str.length % 4) {
+        str += '=';
+    }
+    return atob(str);
+}
+
+// Khởi tạo Modal chia sẻ và tải ảnh
+function initShareModal() {
+    const shareBtn = document.getElementById('share-btn');
+    const shareModal = document.getElementById('share-modal');
+    const closeBtn = document.getElementById('modal-close-btn');
+    const uploadArea = document.getElementById('upload-area');
+    const fileInput = document.getElementById('file-input');
+    const uploadStatus = document.getElementById('upload-status');
+    const uploadInstruction = document.getElementById('upload-instruction');
+    const resultBox = document.getElementById('result-box');
+    const shareUrlText = document.getElementById('share-url');
+    const copyBtn = document.getElementById('copy-btn');
+    
+    if (!shareBtn || !shareModal) return;
+    
+    // Mở modal
+    shareBtn.addEventListener('click', () => {
+        shareModal.classList.add('active');
+        resultBox.style.display = 'none';
+        uploadInstruction.style.display = 'block';
+        uploadStatus.style.display = 'none';
+    });
+    
+    // Đóng modal
+    closeBtn.addEventListener('click', () => {
+        shareModal.classList.remove('active');
+    });
+    
+    // Đóng khi click ra vùng ngoài
+    shareModal.addEventListener('click', (e) => {
+        if (e.target === shareModal) {
+            shareModal.classList.remove('active');
+        }
+    });
+    
+    // Kích hoạt chọn file
+    uploadArea.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // Xử lý upload ảnh
+    fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        uploadInstruction.style.display = 'none';
+        uploadStatus.style.display = 'block';
+        uploadStatus.textContent = "Đang nén và tải ảnh lên máy chủ...";
+        
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Tải lên Telegra.ph (anonymous hosting)
+            const response = await fetch('https://telegra.ph/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) throw new Error("Không thể kết nối đến máy chủ lưu trữ ảnh.");
+            
+            const resData = await response.json();
+            if (!Array.isArray(resData) || resData.length === 0 || !resData[0].src) {
+                throw new Error("Phản hồi từ máy chủ không hợp lệ.");
+            }
+            
+            const uploadedImgUrl = 'https://telegra.ph' + resData[0].src;
+            console.log("Upload ảnh thành công:", uploadedImgUrl);
+            
+            // Tạo mã ngắn gọn an toàn từ URL ảnh
+            const code = encodeSafeBase64(uploadedImgUrl);
+            
+            // Tạo đường dẫn hoàn chỉnh
+            const baseDomain = window.location.origin + window.location.pathname;
+            const finalShareUrl = `${baseDomain}?code=${code}`;
+            
+            shareUrlText.textContent = finalShareUrl;
+            resultBox.style.display = 'block';
+            uploadStatus.textContent = "Đã tạo link chia sẻ của bạn! 💕";
+        } catch (err) {
+            console.error("Lỗi khi tạo link:", err);
+            uploadStatus.textContent = "Tải ảnh lên thất bại. Vui lòng thử lại!";
+            uploadInstruction.style.display = 'block';
+        }
+    });
+    
+    // Sao chép liên kết vào clipboard
+    copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(shareUrlText.textContent)
+            .then(() => {
+                copyBtn.textContent = "Đã chép!";
+                copyBtn.style.background = "#00ff88";
+                setTimeout(() => {
+                    copyBtn.textContent = "Sao chép";
+                    copyBtn.style.background = "#ff69b4";
+                }, 2000);
+            })
+            .catch(err => {
+                console.error("Lỗi sao chép link:", err);
+            });
+    });
 }

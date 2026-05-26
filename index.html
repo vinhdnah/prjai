@@ -68,9 +68,38 @@
   <div id="canvas-wrapper"></div>
   <div id="ui">
     <h1>VINHDNAH 💕 <span class="loader" id="loader"></span></h1>
-    <select id="camera-select"></select>
+    <div class="control-row">
+      <select id="camera-select"></select>
+      <button id="share-btn">Tạo Link Chia Sẻ 📤</button>
+    </div>
   </div>
   <div id="info">💕 Giơ 2 bàn tay — ngón cái & ngón trỏ tạo khung ảnh tình yêu</div>
+
+  <!-- Share Modal Popup -->
+  <div class="modal-overlay" id="share-modal">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close-btn">&times;</button>
+      <div class="modal-title">Tải Ảnh & Tạo Link 💕</div>
+      <div class="modal-desc">Chọn một bức ảnh đẹp của bạn để tải lên và tạo đường dẫn chia sẻ tình yêu độc quyền!</div>
+      
+      <!-- Upload Area -->
+      <div class="upload-area" id="upload-area">
+        <div class="upload-icon">📸</div>
+        <div class="upload-text" id="upload-instruction">Click để chọn ảnh từ thiết bị</div>
+        <div class="upload-status" id="upload-status">Đang tải ảnh lên...</div>
+      </div>
+      
+      <!-- Link Result Box -->
+      <div id="result-box" style="display: none; margin-top: 20px;">
+        <div class="share-link-box">
+          <div class="share-url" id="share-url">https://vinhdnah.com/?code=...</div>
+          <button class="copy-btn" id="copy-btn">Sao chép</button>
+        </div>
+      </div>
+      
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+    </div>
+  </div>
 
   <script src="js/frame.js"></script>
 </body>
