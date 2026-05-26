@@ -216,10 +216,18 @@ async function getCameras() {
 
 async function startCamera(deviceId) {
     if (activeStream) activeStream.getTracks().forEach(t => t.stop());
+    
+    // Kiểm tra thiết bị di động
+    let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    // Chọn độ phân giải nhẹ nhàng giúp tối ưu hoá MediaPipe chạy siêu tốc, giảm độ trễ
+    let targetWidth = isMobile ? 480 : 640;
+    let targetHeight = isMobile ? 360 : 480;
+    
     activeStream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
-            width: { ideal: 1280 }, 
-            height: { ideal: 720 }, 
+            width: { ideal: targetWidth }, 
+            height: { ideal: targetHeight }, 
             deviceId: deviceId ? { exact: deviceId } : undefined 
         } 
     });
@@ -231,14 +239,20 @@ async function startCamera(deviceId) {
 }
 
 let isProcessing = false;
+let lastProcessTime = 0;
+const PROCESS_THROTTLE_MS = 33; // Tối đa ~30 FPS nhận diện tay để tránh nghẽn CPU/GPU, giúp các hiệu ứng vẽ luôn đạt 60 FPS mượt mà
+
 async function processFrame() {
-    if (isProcessing) {
+    let now = performance.now();
+    if (isProcessing || (now - lastProcessTime < PROCESS_THROTTLE_MS)) {
         requestAnimationFrame(processFrame);
         return;
     }
+    
     if (!videoElement.paused && !videoElement.ended && videoElement.currentTime !== lastVideoTime) {
         lastVideoTime = videoElement.currentTime;
         isProcessing = true;
+        lastProcessTime = now;
         hands.send({ image: videoElement }).then(() => {
             isProcessing = false;
         }).catch((err) => {
