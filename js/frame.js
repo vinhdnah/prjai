@@ -2,8 +2,8 @@
 // CONFIGURATION SECTION - QUẢN LÝ THÔNG SỐ HIỆU ỨNG 💕
 // ======================================================================
 const CONFIG = {
-    // Độ nhạy và độ mượt của việc nhận diện (lớn hơn = nhạy bén hơn, nhỏ hơn = mượt hơn)
-    smoothFactor: 0.35, 
+    // Độ nhạy và độ mượt (Đặt = 1.0 để bám tay tức thì 1:1 không trễ, đặt < 1.0 để làm mượt chống rung)
+    smoothFactor: 1.0, 
     
     // Khoảng cách nhận diện khung
     minFrameDiag: 80,    // Khoảng cách tối thiểu để hiển thị khung ảnh
@@ -70,7 +70,7 @@ function setup() {
     hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
     hands.setOptions({ 
         maxNumHands: 2, 
-        modelComplexity: 1, 
+        modelComplexity: 0, // Dùng model 0 (Lite) để tăng tốc độ nhận diện lên gấp 2-3 lần, triệt tiêu độ trễ
         minDetectionConfidence: 0.5, // Giảm xuống 0.5 giúp nhận diện ngón tay nhạy hơn
         minTrackingConfidence: 0.55  // Giữ tracking ở 0.55 để tránh mất dấu khi di chuyển nhanh
     });
@@ -361,8 +361,11 @@ function draw() {
     }
     
     // --- Áp dụng làm mượt góc khung ảnh (Exponential Smoothing) ---
+    // --- Áp dụng làm mượt hoặc bám tay trực tiếp 1:1 ---
     if (rawCorners) {
-        if (!smoothCorners) {
+        if (CONFIG.smoothFactor >= 1.0) {
+            smoothCorners = rawCorners;
+        } else if (!smoothCorners) {
             smoothCorners = rawCorners.map(p => ({ x: p.x, y: p.y }));
         } else {
             let f = CONFIG.smoothFactor;
