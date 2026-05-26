@@ -220,9 +220,20 @@ async function startCamera(deviceId) {
     // Kiểm tra thiết bị di động
     let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     
-    // Sử dụng tỉ lệ chuẩn 16:9 để camera hiển thị bình thường không bị zoom/crop trên màn hình rộng
-    let targetWidth = isMobile ? 640 : 1280;
-    let targetHeight = isMobile ? 360 : 720;
+    // Phát hiện hướng màn hình thực tế (dọc hay ngang)
+    let isPortrait = window.innerHeight > window.innerWidth;
+    
+    // Tự động khớp tỉ lệ camera với hướng màn hình để tránh bị tự động crop/zoom hai bên
+    let targetWidth, targetHeight;
+    if (isPortrait) {
+        // Hướng dọc (Portrait): Ngang bé, dọc lớn
+        targetWidth = isMobile ? 360 : 720;
+        targetHeight = isMobile ? 640 : 1280;
+    } else {
+        // Hướng ngang (Landscape): Ngang lớn, dọc bé
+        targetWidth = isMobile ? 640 : 1280;
+        targetHeight = isMobile ? 360 : 720;
+    }
     
     activeStream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
