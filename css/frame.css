@@ -30,7 +30,6 @@ body {
 .p5Canvas {
     width: 100% !important;
     height: 100% !important;
-    object-fit: cover !important;
     transform: scaleX(-1);
 }
 
@@ -272,4 +271,264 @@ h1 {
     font-size: 14px;
     color: #ff69b4;
     display: none;
+}
+
+/* Adjust Panel (Floating Panel / Bottom Sheet) */
+.adjust-panel {
+    position: fixed;
+    bottom: -100%; /* Hidden by default at the bottom */
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 420px;
+    background: rgba(15, 15, 38, 0.85);
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5), 0 0 40px rgba(255, 105, 180, 0.15);
+    backdrop-filter: blur(15px);
+    z-index: 100;
+    transition: bottom 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: auto;
+}
+
+.adjust-panel.active {
+    bottom: 0;
+}
+
+.panel-header {
+    padding: 15px 20px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    border-bottom: 1px solid rgba(255, 105, 180, 0.15);
+}
+
+.panel-handle {
+    width: 40px;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.panel-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #ff69b4;
+}
+
+.panel-close {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 24px;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.panel-close:hover {
+    color: #ff69b4;
+}
+
+.panel-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.control-group label {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    font-weight: 500;
+}
+
+.label-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.val-display {
+    font-size: 12px;
+    color: #ffb6d9;
+    font-family: monospace;
+    font-weight: 600;
+}
+
+/* Custom range inputs */
+input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 105, 180, 0.15);
+    border-radius: 3px;
+    outline: none;
+    border: 1px solid rgba(255, 105, 180, 0.2);
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #ff69b4, #ff3366);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(255, 105, 180, 0.6);
+    transition: transform 0.1s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+}
+
+/* Toggle Group for fit modes */
+.toggle-group {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 105, 180, 0.2);
+    border-radius: 10px;
+    padding: 3px;
+}
+
+.toggle-opt {
+    flex: 1;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.toggle-opt.active {
+    background: linear-gradient(135deg, #ff69b4, #ff3366);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(255, 105, 180, 0.4);
+}
+
+/* Specific buttons styles in UI row */
+#adjust-btn {
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffb6d9;
+    border: 1px solid rgba(255, 105, 180, 0.3);
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+#adjust-btn:hover {
+    background: rgba(255, 105, 180, 0.2);
+    border-color: rgba(255, 105, 180, 0.6);
+}
+
+/* Responsive CSS for Mobile Screens */
+@media (max-width: 600px) {
+    #ui {
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        gap: 6px;
+    }
+    
+    h1 {
+        font-size: 18px;
+        letter-spacing: 1px;
+    }
+    
+    .control-row {
+        gap: 6px;
+        width: 100%;
+    }
+    
+    #camera-select {
+        padding: 5px 8px;
+        font-size: 11px;
+        max-width: 90px;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+    
+    #adjust-btn, #share-btn {
+        padding: 6px 10px;
+        font-size: 11px;
+        flex: 1;
+        text-align: center;
+    }
+    
+    #info {
+        bottom: 15px;
+        font-size: 12px;
+        padding: 6px 14px;
+        width: 85%;
+        max-width: 320px;
+        line-height: 1.3;
+    }
+    
+    .modal-content {
+        padding: 20px;
+        width: 92%;
+    }
+    
+    .modal-title {
+        font-size: 17px;
+        margin-bottom: 10px;
+    }
+    
+    .modal-desc {
+        font-size: 12px;
+        margin-bottom: 15px;
+    }
+    
+    .upload-area {
+        padding: 20px 10px;
+    }
+    
+    .upload-icon {
+        font-size: 32px;
+    }
+    
+    .share-link-box {
+        padding: 8px 10px;
+    }
+    
+    .share-url {
+        font-size: 11px;
+    }
+    
+    /* Make Adjust Panel look like a native bottom sheet on mobile */
+    .adjust-panel {
+        width: 100%;
+        max-width: 100%;
+        border-radius: 20px 20px 0 0;
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+    }
+    
+    .panel-body {
+        padding: 15px 20px 25px; /* extra bottom padding for mobile safe area */
+        gap: 14px;
+    }
 }

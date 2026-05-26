@@ -18,6 +18,12 @@ const CONFIG = {
     maxHearts: 25,
     maxGlitters: 40,
     
+    // Cấu hình thu phóng và dịch ảnh
+    fitMode: 'cover',    // 'cover' hoặc 'contain'
+    imageZoom: 1.0,      // Hệ số zoom ảnh
+    imageOffsetX: 0.0,   // Dịch chuyển X
+    imageOffsetY: 0.0,   // Dịch chuyển Y
+    
     // Danh sách ảnh dự phòng (fallback) nếu trình duyệt không quét được thư mục tự động
     fallbackImages: [
         'images/anh1.jpg',
@@ -61,7 +67,7 @@ for (let a = 0; a < Math.PI * 2; a += 0.25) {
 }
 
 function setup() {
-    let canvas = createCanvas(1280, 720);
+    let canvas = createCanvas(windowWidth, windowHeight);
     canvas.parent('canvas-wrapper');
     textAlign(CENTER, CENTER);
     textFont('Courier New');
@@ -93,6 +99,9 @@ function setup() {
     
     // Khởi tạo tính năng chia sẻ ảnh
     initShareModal();
+
+    // Khởi tạo tính năng căn chỉnh ảnh
+    initAdjustPanel();
 }
 
 // --- Hàm tự động quét và tải ảnh từ thư mục images ---
@@ -326,6 +335,32 @@ function sortQuad(points) {
     return finalPoints;
 }
 
+// --- Chuyển đổi tọa độ từ khung hình camera (MediaPipe) sang kích thước thực tế của Canvas (theo tỉ lệ object-fit: cover) ---
+function getCanvasCoords(lm) {
+    let videoW = videoElement.videoWidth || 1280;
+    let videoH = videoElement.videoHeight || 720;
+    
+    let videoAspect = videoW / videoH;
+    let canvasAspect = width / height;
+    
+    let scale, dx = 0, dy = 0;
+    if (canvasAspect > videoAspect) {
+        // Canvas bè ngang hơn Video (Video bị cắt trên dưới)
+        scale = width / videoW;
+        dy = (height - videoH * scale) / 2;
+    } else {
+        // Canvas cao dọc hơn Video (Video bị cắt trái phải - thường thấy trên Điện thoại)
+        scale = height / videoH;
+        dx = (width - videoW * scale) / 2;
+    }
+    
+    // Ánh xạ tọa độ normalized (0 đến 1) của MediaPipe sang điểm hiển thị thực tế
+    let px = (lm.x * videoW) * scale + dx;
+    let py = (lm.y * videoH) * scale + dy;
+    
+    return { x: px, y: py };
+}
+
 function draw() {
     clear();
     cornerPulse = (sin(frameCount * 0.08) + 1) * 0.5;
@@ -339,8 +374,9 @@ function draw() {
             let lm = handResults.multiHandLandmarks[hi];
             for (let ti = 0; ti < ALL_TIPS.length; ti++) {
                 let tip = lm[ALL_TIPS[ti]];
-                let fx = tip.x * width;
-                let fy = tip.y * height;
+                let pt = getCanvasCoords(tip);
+                let fx = pt.x;
+                let fy = pt.y;
                 let col = TIP_COLORS[ti];
                 drawingContext.shadowColor = col;
                 fill(col);
@@ -358,12 +394,12 @@ function draw() {
             let h1 = handResults.multiHandLandmarks[0];
             let h2 = handResults.multiHandLandmarks[1];
             
-            // Lấy 4 điểm chốt (Ngón cái-4 và Ngón trỏ-8 của cả 2 tay)
+            // Lấy 4 điểm chốt (Ngón cái-4 và Ngón trỏ-8 của cả 2 tay) mapped chính xác theo toạ độ màn hình
             let pts = [
-                { x: h1[4].x * width, y: h1[4].y * height },
-                { x: h1[8].x * width, y: h1[8].y * height },
-                { x: h2[4].x * width, y: h2[4].y * height },
-                { x: h2[8].x * width, y: h2[8].y * height },
+                getCanvasCoords(h1[4]),
+                getCanvasCoords(h1[8]),
+                getCanvasCoords(h2[4]),
+                getCanvasCoords(h2[8])
             ];
             
             // Sắp xếp chuẩn các góc theo chiều kim đồng hồ
@@ -394,14 +430,20 @@ function draw() {
         let tl = smoothCorners[0], tr = smoothCorners[1], br = smoothCorners[2], bl = smoothCorners[3];
         let diag = dist(tl.x, tl.y, br.x, br.y);
         
-        let nowOpen = diag > CONFIG.minFrameDiag;
+        // Ngưỡng tính toán động tối ưu cho cả máy tính và điện thoại
+        let minDimension = Math.min(width, height);
+        let minFrameDiag = Math.max(60, Math.min(100, minDimension * 0.15));
+        let closeThreshold = Math.max(90, Math.min(150, minDimension * 0.22));
+        let openThreshold = Math.max(140, Math.min(220, minDimension * 0.32));
+        
+        let nowOpen = diag > minFrameDiag;
         if (nowOpen && wasClosed && bgImages.length > 0) {
             prevImgIdx = currentImgIdx;
             currentImgIdx = (currentImgIdx + 1) % bgImages.length;
             transitionProgress = 0.0;
             wasClosed = false;
         }
-        if (!nowOpen) wasClosed = true;
+        if (diag < closeThreshold) wasClosed = true;
         isOpen = nowOpen;
         
         // Tăng tiến trình chuyển cảnh
@@ -480,22 +522,53 @@ function draw() {
                 let cx = (minX + maxX) / 2;
                 let cy = (minY + maxY) / 2;
                 
-                // Hiệu ứng zoom nhẹ thở (breathing) tạo cảm giác ảnh sống động
                 let breathe = 1.0 + sin(frameCount * 0.02) * 0.04;
-                
                 let imgAspect = img.width / img.height;
                 let boxAspect = bw / bh;
-                let dw, dh;
-                if (boxAspect > imgAspect) { 
-                    dw = bw * breathe; 
-                    dh = (bw / imgAspect) * breathe; 
-                } else { 
-                    dh = bh * breathe; 
-                    dw = (bh * imgAspect) * breathe; 
+                
+                let zoom = CONFIG.imageZoom || 1.0;
+                let fit = CONFIG.fitMode || 'cover';
+                
+                // 1. Vẽ nền trong suốt nếu là chế độ contain (Vừa khít) để tránh lộ khoảng đen trống
+                if (fit === 'contain') {
+                    let bgW, bgH;
+                    if (boxAspect > imgAspect) {
+                        bgW = bw * breathe;
+                        bgH = (bw / imgAspect) * breathe;
+                    } else {
+                        bgH = bh * breathe;
+                        bgW = (bh * imgAspect) * breathe;
+                    }
+                    drawingContext.globalAlpha = (alphaVal * 0.25) / 255;
+                    image(img, cx, cy, bgW, bgH);
                 }
                 
+                // 2. Tính toán kích thước cho hình ảnh chính
+                let dw, dh;
+                if (fit === 'cover') {
+                    if (boxAspect > imgAspect) { 
+                        dw = bw * breathe * zoom; 
+                        dh = (bw / imgAspect) * breathe * zoom; 
+                    } else { 
+                        dh = bh * breathe * zoom; 
+                        dw = (bh * imgAspect) * breathe * zoom; 
+                    }
+                } else { // 'contain'
+                    if (boxAspect > imgAspect) {
+                        dh = bh * breathe * zoom;
+                        dw = bh * imgAspect * breathe * zoom;
+                    } else {
+                        dw = bw * breathe * zoom;
+                        dh = (bw / imgAspect) * breathe * zoom;
+                    }
+                }
+                
+                // Tính toán độ dời ảnh (panning) theo cài đặt thanh trượt (offset tỉ lệ theo kích thước khung)
+                let offsetX = (CONFIG.imageOffsetX || 0) * bw;
+                let offsetY = (CONFIG.imageOffsetY || 0) * bh;
+                
                 drawingContext.globalAlpha = alphaVal / 255;
-                image(img, cx, cy, dw, dh);
+                image(img, cx + offsetX, cy + offsetY, dw, dh);
                 drawingContext.globalAlpha = 1;
                 drawingContext.restore();
                 pop();
@@ -802,5 +875,99 @@ function initShareModal() {
             .catch(err => {
                 console.error("Lỗi sao chép link:", err);
             });
+    });
+}
+
+function windowResized() {
+    resizeCanvas(windowWidth, windowHeight);
+}
+
+// Khởi tạo bảng điều khiển căn chỉnh ảnh
+function initAdjustPanel() {
+    const adjustBtn = document.getElementById('adjust-btn');
+    const adjustPanel = document.getElementById('adjust-panel');
+    const closeBtn = document.getElementById('panel-close-btn');
+    
+    const fitCoverBtn = document.getElementById('fit-cover-btn');
+    const fitContainBtn = document.getElementById('fit-contain-btn');
+    
+    const zoomSlider = document.getElementById('zoom-slider');
+    const zoomVal = document.getElementById('zoom-val');
+    
+    const panXSlider = document.getElementById('pan-x-slider');
+    const panXVal = document.getElementById('pan-x-val');
+    
+    const panYSlider = document.getElementById('pan-y-slider');
+    const panYVal = document.getElementById('pan-y-val');
+    
+    const smoothSlider = document.getElementById('smooth-slider');
+    const smoothVal = document.getElementById('smooth-val');
+    
+    if (!adjustBtn || !adjustPanel) return;
+    
+    // Mở / Đóng Panel
+    adjustBtn.addEventListener('click', () => {
+        adjustPanel.classList.toggle('active');
+    });
+    
+    closeBtn.addEventListener('click', () => {
+        adjustPanel.classList.remove('active');
+    });
+    
+    // Click ngoài đóng panel (nếu chạm vùng khác ngoài panel và nút)
+    document.addEventListener('click', (e) => {
+        if (!adjustPanel.contains(e.target) && e.target !== adjustBtn) {
+            adjustPanel.classList.remove('active');
+        }
+    });
+    
+    // Điều khiển Chế độ hiển thị (Fit Mode)
+    fitCoverBtn.addEventListener('click', () => {
+        CONFIG.fitMode = 'cover';
+        fitCoverBtn.classList.add('active');
+        fitContainBtn.classList.remove('active');
+    });
+    
+    fitContainBtn.addEventListener('click', () => {
+        CONFIG.fitMode = 'contain';
+        fitContainBtn.classList.add('active');
+        fitCoverBtn.classList.remove('active');
+    });
+    
+    // Điều khiển Zoom
+    zoomSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        CONFIG.imageZoom = val;
+        zoomVal.textContent = `${Math.round(val * 100)}%`;
+    });
+    
+    // Điều khiển Pan X
+    panXSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        CONFIG.imageOffsetX = val;
+        const sign = val > 0 ? '+' : '';
+        panXVal.textContent = `${sign}${Math.round(val * 100)}%`;
+    });
+    
+    // Điều khiển Pan Y
+    panYSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        CONFIG.imageOffsetY = val;
+        const sign = val > 0 ? '+' : '';
+        panYVal.textContent = `${sign}${Math.round(val * 100)}%`;
+    });
+    
+    // Điều khiển Smooth Factor
+    smoothSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        CONFIG.smoothFactor = val;
+        
+        if (val >= 1.0) {
+            smoothVal.textContent = "Tức thì";
+        } else if (val <= 0.15) {
+            smoothVal.textContent = "Cực mượt (Trễ)";
+        } else {
+            smoothVal.textContent = `${Math.round(val * 100)}%`;
+        }
     });
 }

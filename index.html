@@ -70,10 +70,62 @@
     <h1>VINHDNAH 💕 <span class="loader" id="loader"></span></h1>
     <div class="control-row">
       <select id="camera-select"></select>
+      <button id="adjust-btn">Tùy Chỉnh ⚙️</button>
       <button id="share-btn">Tạo Link Chia Sẻ 📤</button>
     </div>
   </div>
-  <div id="info">💕 Giơ 2 bàn tay — ngón cái & ngón trỏ tạo khung ảnh tình yêu</div>
+  <div id="info">💕 Giơ 2 bàn tay — ngón cái & ngón trỏ tạo khung ảnh.</div>
+
+  <!-- Adjust Panel / Bottom Sheet for Mobile & Desktop -->
+  <div class="adjust-panel" id="adjust-panel">
+    <div class="panel-header">
+      <div class="panel-handle"></div>
+      <div class="panel-title">Cài Đặt Khung Ảnh 💕</div>
+      <button class="panel-close" id="panel-close-btn">&times;</button>
+    </div>
+    <div class="panel-body">
+      <div class="control-group">
+        <label>Chế độ hiển thị:</label>
+        <div class="toggle-group">
+          <button class="toggle-opt active" id="fit-cover-btn">Tràn viền (Cover)</button>
+          <button class="toggle-opt" id="fit-contain-btn">Vừa vặn (Contain)</button>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <div class="label-row">
+          <label for="zoom-slider">Độ phóng ảnh:</label>
+          <span class="val-display" id="zoom-val">100%</span>
+        </div>
+        <input type="range" id="zoom-slider" min="0.5" max="2.5" step="0.05" value="1.0">
+      </div>
+      
+      <div class="control-group">
+        <div class="label-row">
+          <label for="pan-x-slider">Dịch chuyển ngang (X):</label>
+          <span class="val-display" id="pan-x-val">0%</span>
+        </div>
+        <input type="range" id="pan-x-slider" min="-0.8" max="0.8" step="0.02" value="0">
+      </div>
+      
+      <div class="control-group">
+        <div class="label-row">
+          <label for="pan-y-slider">Dịch chuyển dọc (Y):</label>
+          <span class="val-display" id="pan-y-val">0%</span>
+        </div>
+        <input type="range" id="pan-y-slider" min="-0.8" max="0.8" step="0.02" value="0">
+      </div>
+
+      <div class="control-group">
+        <div class="label-row">
+          <label for="smooth-slider">Độ nhạy bám tay:</label>
+          <span class="val-display" id="smooth-val">Tức thì</span>
+        </div>
+        <input type="range" id="smooth-slider" min="0.1" max="1.0" step="0.05" value="1.0">
+      </div>
+    </div>
+  </div>
+
 
   <!-- Share Modal Popup -->
   <div class="modal-overlay" id="share-modal">
